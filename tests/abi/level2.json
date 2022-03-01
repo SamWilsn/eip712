@@ -1,0 +1,44 @@
+[
+	{
+		"inputs": [
+			{
+				"components": [
+					{
+						"components": [
+							{
+								"internalType": "uint256",
+								"name": "v",
+								"type": "uint256"
+							}
+						],
+						"internalType": "struct Level2.InnerStruct",
+						"name": "inner",
+						"type": "tuple"
+					}
+				],
+				"internalType": "struct Level2.OuterStruct",
+				"name": "input",
+				"type": "tuple"
+			},
+			{
+				"internalType": "uint8",
+				"name": "v",
+				"type": "uint8"
+			},
+			{
+				"internalType": "bytes32",
+				"name": "r",
+				"type": "bytes32"
+			},
+			{
+				"internalType": "bytes32",
+				"name": "s",
+				"type": "bytes32"
+			}
+		],
+		"name": "doSomething",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+]
