@@ -1,0 +1,36 @@
+on: [push, pull_request]
+
+name: Continuous integration
+
+jobs:
+  check:
+    name: Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust:
+          - stable
+          - 1.58.1
+
+        features:
+          - '--all-features'
+          - '--no-default-features'
+
+        tool:
+          - cargo test
+          - wasm-pack test --node
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: ${{ matrix.rust }}
+          target: wasm32-unknown-unknown
+          override: true
+
+      - name: Install `wasm-pack`
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+        if: ${{ contains(matrix.tool, 'wasm-pack') }}
+
+      - run: ${{ matrix.tool }} ${{ matrix.features }}
