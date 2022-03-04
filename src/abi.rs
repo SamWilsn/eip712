@@ -266,10 +266,7 @@ impl Kind {
             return false;
         }
 
-        match self.base {
-            Base::String | Base::Bytes | Base::Tuple => false,
-            _ => true,
-        }
+        !matches!(self.base, Base::String | Base::Bytes | Base::Tuple)
     }
 
     #[inline]

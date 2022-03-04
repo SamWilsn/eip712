@@ -175,10 +175,7 @@ where
     type Output = core::iter::Filter<Self, fn(&T::Item) -> bool>;
 
     fn exclude_signature(self) -> Self::Output {
-        self.filter(|i| match i.borrow().name() {
-            "v" | "r" | "s" => false,
-            _ => true,
-        })
+        self.filter(|i| !matches!(i.borrow().name(), "v" | "r" | "s"))
     }
 }
 
@@ -487,7 +484,7 @@ where
 
     fn collect_functions(&mut self, entries: &[abi::Entry]) -> Option<Vec<abi::Function>> {
         let functions = entries
-            .into_iter()
+            .iter()
             .filter_map(abi::Entry::as_function)
             .filter(|e| Self::match_inputs(*e));
 
@@ -751,7 +748,7 @@ where
                 parameter.internal_kind().shorten_kind(),
             )?;
 
-            Self::write_encode_data(&mut w, "input712.", &parameter)?;
+            Self::write_encode_data(&mut w, "input712.", parameter)?;
 
             writeln!(w, "        return keccak256(buffer);")?;
             writeln!(w, "    }}")?;
@@ -881,8 +878,7 @@ where
             let nonce = parameter
                 .components()
                 .iter()
-                .filter(|p| p.name() == "nonce")
-                .next();
+                .find(|p| p.name() == "nonce");
 
             if let Some(_nonce) = nonce {
                 todo!("implement nonces");
