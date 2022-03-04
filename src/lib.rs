@@ -4,7 +4,46 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+//! # eip712
+//!
+//! [EIP-712] is a standard for signing structured data in the Ethereum
+//! ecosystem. This crate is a tool for generating Solidity code for verifying
+//! [EIP-712] style signatures based on a JSON description of a contract's
+//! [ABI].
+//!
+//! ## Example
+//!
+//! ```
+//! use eip712::Eip712;
+//!
+//! use std::io::Write;
+//!
+//! # let abi = include_str!("../tests/abi/eip712demo.json");
+//! let mut output = String::new();
+//!
+//! // Configure and run the generator.
+//! Eip712::<()>::new("EIP712Demo")         // Name of the base contract.
+//!     .signing_domain("EIP712Demo")       // Name for the EIP-712 domain.
+//!     .version("1")                       // Contract version.
+//!     .read_str(abi)
+//!     .unwrap()
+//!     .generate(&mut output)
+//!     .unwrap();
+//! ```
+//!
+//! [EIP-712]: https://eips.ethereum.org/EIPS/eip-712
+//! [ABI]: https://docs.soliditylang.org/en/v0.8.12/abi-spec.html
+//!
+//! ## Features
+//!
+//! This crate has a couple optional features:
+//!
+//!  - `backtraces`: Collect backtraces on error types.
+//!  - `std`: Use the Rust standard library.
+
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
+#![deny(unsafe_code)]
+#![warn(missing_docs, unused_qualifications)]
 
 extern crate alloc;
 
@@ -25,29 +64,60 @@ use snafu::{ensure, Backtrace, Snafu};
 use core::borrow::Borrow;
 use core::fmt::{self, Write};
 
+#[cfg(all(target_arch = "wasm32", test))]
+#[doc(hidden)]
+use wasm_bindgen_test::wasm_bindgen_test as test;
+
+#[cfg(all(not(target_arch = "wasm32"), test))]
+#[doc(hidden)]
+use core::prelude::v1::test;
+
+/// Errors that can arise while generating an implementation.
 #[derive(Debug, Snafu)]
 pub enum Error {
+    /// Problem encountered while decoding the ABI.
     #[snafu(context(false))]
     Abi {
+        /// Underlying source of the error.
         #[snafu(backtrace)]
         source: abi::Error,
     },
 
+    /// Problem encountered while interacting with the file system.
     #[cfg(feature = "std")]
     FileSystem {
+        /// Underlying source of the error.
         source: std::io::Error,
+
+        /// Location of the file or directory.
         path: std::path::PathBuf,
     },
 
+    /// Multiple types with the same name have different internal structures.
+    #[snafu(display("multiple distinct types share the same name: `{type_name}`"))]
     TypeCollision {
+        /// Location where the error was generated.
         backtrace: Backtrace,
+
+        /// Name of the types which collide.
         type_name: String,
     },
 }
 
+/// Warnings that can arise while generating an implementation.
+///
+/// Unlike [`Error`], these warnings do not halt the generation process.
 #[derive(Debug, Snafu)]
-pub enum Warning {}
+pub enum Warning {
+    /// Function signature does not include replay protection.
+    #[snafu(display("function `{function}` does not have a `nonce` parameter"))]
+    MissingNonce {
+        /// Name of the function lacking replay protection.
+        function: String
+    },
+}
 
+/// Wrapper for [`Error`] and [`Warning`] that provides the source location.
 #[derive(Debug, Snafu)]
 pub struct Locate<E>
 where
@@ -64,21 +134,28 @@ impl<E> Locate<E>
 where
     E: 'static + snafu::ErrorCompat + snafu::AsErrorSource + core::fmt::Display,
 {
+    /// Get a reference to the inner error.
     pub fn inner(&self) -> &E {
         &self.inner
     }
 
+    /// Consume this instance and return the inner error.
     pub fn into_inner(self) -> E {
         self.inner
     }
 
+    /// Source location causing the error.
     pub fn source(&self) -> &str {
         &self.source
     }
 }
 
+/// A trait that handles errors and warnings.
 pub trait Reporter {
+    /// Report that a fatal error has occurred.
     fn error(&mut self, _error: Locate<Error>) {}
+
+    /// Report that a non-fatal warning has occurred.
     fn warning(&mut self, _warning: Locate<Warning>) {}
 }
 
@@ -105,18 +182,25 @@ where
     }
 }
 
+/// Chain identifier to use in a domain separator.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum ChainId {
+    /// Capture the chain identifier when the contract is deployed.
     WhenDeployed,
 }
 
+/// Address of the verifying contract to use in a domain separator.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum VerifyingContract {
+    /// Use the address of the currently executing contract.
     This,
 }
 
+/// Generates a concrete contract implementing EIP-712 style signatures.
+///
+/// See the crate for an example.
 #[derive(Debug)]
 pub struct Eip712<R> {
     reporter: R,
@@ -139,6 +223,13 @@ impl<R> Eip712<R>
 where
     R: Default,
 {
+    /// Create a new `Eip712` instance, to extend `base_contract`.
+    ///
+    /// `Eip712` generates a concrete implementation for abstract methods
+    /// specified in an ABI. Since the ABI lacks the actual name of the contract,
+    /// it must be provided in `base_contract`.
+    ///
+    /// See the top-level crate for an example.
     pub fn new<B>(base_contract: B) -> Self
     where
         B: Into<String>,
@@ -163,67 +254,85 @@ where
 }
 
 impl<R> Eip712<R> {
+    /// Consume this instance and return its associated reporter.
     pub fn into_reporter(self) -> R {
         self.reporter
     }
 
+    /// Return a reference to the reporter associated with this instance.
     pub fn reporter(&self) -> &R {
         &self.reporter
     }
 
+    /// Return a mutable reference to the reporter associated with this instance.
     pub fn reporter_mut(&mut self) -> &mut R {
         &mut self.reporter
     }
 
+    /// Remove the `name` field from the domain separator.
     pub fn clear_signing_domain(mut self) -> Self {
         self.signing_domain = None;
         self
     }
 
+    /// Include the given value as the user readable `name` field in the domain
+    /// separator.
     pub fn signing_domain<S: Into<String>>(mut self, s: S) -> Self {
         self.signing_domain = Some(s.into());
         self
     }
 
+    /// Remove the `version` field from the domain separator.
     pub fn clear_version(mut self) -> Self {
         self.version = None;
         self
     }
 
+    /// Include the given value as the `version` field in the domain separator.
     pub fn version<S: Into<String>>(mut self, s: S) -> Self {
         self.version = Some(s.into());
         self
     }
 
+    /// Remove the `chainId` field from the domain separator.
     pub fn clear_chain_id(mut self) -> Self {
         self.chain_id = None;
         self
     }
 
+    /// Include the given value as the `chainId` field in the domain separator.
     pub fn chain_id(mut self, chain_id: ChainId) -> Self {
         self.chain_id = Some(chain_id);
         self
     }
 
+    /// Remove the `verifyingContract` field from the domain separator.
     pub fn clear_verifying_contract(mut self) -> Self {
         self.verifying_contract = None;
         self
     }
 
+    /// Include the given value as the `verifyingContract` field in the domain
+    /// separator.
     pub fn verifying_contract(mut self, vf: VerifyingContract) -> Self {
         self.verifying_contract = Some(vf);
         self
     }
 
+    /// Remove the `salt` field from the domain separator.
     pub fn clear_salt(mut self) -> Self {
         self.salt = None;
         self
     }
 
+    /// Include the given value as the `salt` field in the domain separator.
     pub fn salt(mut self, s: [u8; 32]) -> Self {
         self.salt = Some(s);
         self
     }
+
+    // TODO: Provide a way to mark a function as not having a nonce. Might need
+    //       to specify the entire function signature, not just the name.
 
     fn domain_separator_type(&self) -> abi::Parameter {
         let internal_kind = abi::InternalKind::new("struct EIP712.EIP712Domain".to_string());
@@ -293,6 +402,15 @@ impl<R> Eip712<R>
 where
     R: Reporter,
 {
+    /// Create a new `Eip712` instance, extending `base_contract`, using
+    /// `reporter` to handle warnings and errors.
+    ///
+    /// `Eip712` generates a concrete implementation for abstract methods
+    /// specified in an ABI. Since the ABI lacks the actual name of the contract,
+    /// it must be provided in `base_contract`.
+    ///
+    /// Any errors or warnings encountered while processing will be passed to
+    /// the given `reporter`.
     pub fn with_reporter<B>(base_contract: B, reporter: R) -> Self
     where
         B: Into<String>,
@@ -333,6 +451,15 @@ where
         self.reporter.error(wrapper);
 
         None
+    }
+
+    fn warn(&mut self, warning: Warning) {
+        let wrapper = Locate {
+            source: self.source.clone().unwrap_or_else(|| "<unknown>".into()),
+            inner: warning,
+        };
+
+        self.reporter.warning(wrapper);
     }
 
     fn match_inputs(entry: &abi::Function) -> bool {
@@ -415,19 +542,69 @@ where
         Some(())
     }
 
-    fn read(&mut self, entries: &[abi::Entry]) -> Option<&mut Self> {
+    fn read(mut self, entries: &[abi::Entry]) -> Option<Self> {
         let r = self.read_inner(entries);
         self.source = None; // Always clear the source after reading.
         r.map(|()| self)
     }
 
-    pub fn read_slice(&mut self, bytes: &[u8]) -> Option<&mut Self> {
+    /// Read an ABI description from a slice.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::Eip712;
+    ///
+    /// use std::io::Write;
+    ///
+    /// # let abi = include_bytes!("../tests/abi/eip712demo.json");
+    /// let mut output = String::new();
+    ///
+    /// // Configure and run the generator.
+    /// Eip712::<()>::new("EIP712Demo")         // Name of the base contract.
+    ///     .signing_domain("EIP712Demo")       // Name for the EIP-712 domain.
+    ///     .version("1")                       // Contract version.
+    ///     .read_slice(abi.as_slice())
+    ///     .unwrap()
+    ///     .generate(&mut output)
+    ///     .unwrap();
+    /// ```
+    pub fn read_slice(mut self, bytes: &[u8]) -> Option<Self> {
         let entries = self.require(abi::from_slice(bytes))?;
         self.read(entries.as_slice())
     }
 
+    /// Read an ABI description from a slice.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::Eip712;
+    ///
+    /// use std::io::Write;
+    /// use std::fs::File;
+    /// # use std::path::PathBuf;
+    /// #
+    /// # let path: PathBuf = [
+    /// #     env!("CARGO_MANIFEST_DIR"),
+    /// #     "tests",
+    /// #     "abi",
+    /// #     "eip712demo.json"
+    /// # ].into_iter().collect();
+    ///
+    /// let mut output = String::new();
+    ///
+    /// // Configure and run the generator.
+    /// Eip712::<ConsoleReporter>::new("EIP712Demo")    // Name of the base contract.
+    ///     .signing_domain("EIP712Demo")               // Name for the EIP-712 domain.
+    ///     .version("1")                               // Contract version.
+    ///     .read_file(path)
+    ///     .unwrap()
+    ///     .generate(&mut output)
+    ///     .unwrap();
+    /// ```
     #[cfg(feature = "std")]
-    pub fn read_file<P>(&mut self, path: P) -> Option<&mut Self>
+    pub fn read_file<P>(mut self, path: P) -> Option<Self>
     where
         P: AsRef<std::path::Path>,
     {
@@ -449,7 +626,8 @@ where
         self.read(entries.as_slice())
     }
 
-    pub fn read_str(&mut self, text: &str) -> Option<&mut Self> {
+    /// Read an ABI description from a string slice.
+    pub fn read_str(mut self, text: &str) -> Option<Self> {
         let entries = self.require(abi::from_str(text))?;
         self.read(entries.as_slice())
     }
@@ -551,7 +729,8 @@ where
         Ok(())
     }
 
-    pub fn generate<W>(&self, mut w: W) -> Result<(), fmt::Error>
+    /// Generate the implementation and write it to `w`.
+    pub fn generate<W>(mut self, mut w: W) -> Result<(), fmt::Error>
     where
         W: Write,
     {
@@ -640,7 +819,8 @@ where
         writeln!(w)?;
         writeln!(w, "    ));")?;
 
-        for function in self.functions.iter() {
+        let functions = core::mem::take(&mut self.functions);
+        for function in functions.iter() {
             let parameter = function.clone().into_input_parameter();
 
             write!(w, "    bytes32 constant private ")?;
@@ -698,6 +878,20 @@ where
 
             writeln!(w, "    {{")?;
 
+            let nonce = parameter
+                .components()
+                .iter()
+                .filter(|p| p.name() == "nonce")
+                .next();
+
+            if let Some(_nonce) = nonce {
+                todo!("implement nonces");
+            } else {
+                self.warn(Warning::MissingNonce {
+                    function: function.name().to_string(),
+                });
+            }
+
             Self::write_encode_data(&mut w, "", &parameter)?;
 
             writeln!(w, "        bytes32 message = keccak256(abi.encodePacked(",)?;
@@ -719,7 +913,9 @@ where
             write!(w, "        return {}(signer", function.name(),)?;
 
             for input in function.inputs().iter().exclude_signature() {
-                write!(w, ", {}", input.name(),)?;
+                if input.name() != "nonce" {
+                    write!(w, ", {}", input.name(),)?;
+                }
             }
 
             writeln!(w, ");",)?;
@@ -734,6 +930,10 @@ where
         Ok(())
     }
 
+    /// Set the name of the source.
+    ///
+    /// Useful with `read_str` and `read_slice`, however it is set automatically
+    /// with `read_file`.
     pub fn source<S>(&mut self, source: S) -> &mut Self
     where
         S: Into<String>,

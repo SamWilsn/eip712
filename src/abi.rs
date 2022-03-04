@@ -4,6 +4,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+//! Rust Representation of Solidity's [ABI].
+//!
+//! [ABI]: https://docs.soliditylang.org/en/v0.8.12/abi-spec.html
+
 use alloc::format;
 use alloc::string::{String, ToString};
 use alloc::vec::Vec;
@@ -23,14 +27,21 @@ use core::fmt;
 use core::num::NonZeroU32;
 use core::str::FromStr;
 
+/// Errors that can arise while parsing ABI descriptions.
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum Error {
+    /// A problem with the input JSON (either the format itself, or its semantics.)
     Json {
+        /// Underlying source of the error.
         source: JsonError,
+
+        /// Location of the error.
         backtrace: Backtrace,
     },
 }
 
+/// Opaque wrapper type for JSON errors encountered while parsing ABI descriptions.
 #[derive(Debug)]
 pub struct JsonError(serde_json::Error);
 
@@ -48,34 +59,70 @@ impl From<serde_json::Error> for JsonError {
 
 impl snafu::Error for JsonError {}
 
+/// Errors that can arise while parsing strings into [`Kind`].
 #[derive(Debug, Snafu)]
+#[non_exhaustive]
 pub enum KindFromStrError {
+    /// A portion of the string should have been a number, but wasn't.
     #[snafu(context(false))]
     ParseInt {
+        /// Underlying source of the error.
         source: core::num::ParseIntError,
+
+        /// Location of the error.
         backtrace: Backtrace,
     },
+
+    /// A character wasn't valid in the input string.
     InvalidCharacter {
+        /// Location of the error.
         backtrace: Backtrace,
     },
+
+    /// The input string was shorter than expected (ex. an unclosed array type.)
     Truncated {
+        /// Location of the error.
         backtrace: Backtrace,
     },
-    UnknownType {
+
+    /// The named type wasn't understood.
+    UnknownKind {
+        /// Location of the error.
         backtrace: Backtrace,
     },
 }
 
+/// Error that can arise while parsing strings into [`StateMutability`].
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub struct StateMutabilityFromStrError {}
 
+/// Describes how state can be accessed by a function.
+///
+/// See: [State Mutability].
+///
+/// [State Mutability]: https://docs.soliditylang.org/en/v0.8.12/contracts.html#state-mutability
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
 #[serde(try_from = "&str", into = "String")]
 pub enum StateMutability {
+    /// Function does not read from or modify the state.
+    ///
+    /// See: [Pure Functions].
+    ///
+    /// [Pure Functions]: https://docs.soliditylang.org/en/v0.8.12/contracts.html#pure-functions
     Pure,
+
+    /// Function may read from, but does not modify, the state.
+    ///
+    /// See: [View Functions].
+    ///
+    /// [View Functions]: https://docs.soliditylang.org/en/v0.8.12/contracts.html#view-functions
     View,
+
+    /// Function may read and modify the state, but does not receive funds.
     Nonpayable,
+
+    /// Function may read and modify the state, and may receive funds.
     Payable,
 }
 
@@ -171,7 +218,7 @@ impl FromStr for Base {
         } else if let Some(num) = txt.strip_prefix("bytes") {
             Ok(Self::BytesSized(num.parse()?))
         } else {
-            UnknownTypeSnafu.fail()
+            UnknownKindSnafu.fail()
         }
     }
 }
@@ -194,12 +241,17 @@ impl fmt::Display for Base {
     }
 }
 
+/// Represents an array.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 pub enum Array {
+    /// Array with a fixed size: `uint8[5]`.
     Fixed(NonZeroU32),
+
+    /// Array with a variable size: `uint8[]`.
     Variable,
 }
 
+/// Represents a Solidity type, like `uint256[98][][3]`.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
 #[serde(try_from = "&str", into = "String")]
 pub struct Kind {
@@ -225,6 +277,18 @@ impl Kind {
         self.base
     }
 
+    /// This [`Kind`], but without any arrays.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind: Kind = "uint256[4][][4]".parse().unwrap();
+    /// let base = kind.base_kind();
+    ///
+    /// assert_eq!(base.to_string(), "uint256");
+    /// ```
     #[inline]
     pub const fn base_kind(&self) -> Self {
         Self {
@@ -233,6 +297,17 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a Solidity `tuple`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::tuple();
+    ///
+    /// assert_eq!(kind.to_string(), "tuple");
+    /// ```
     #[inline]
     pub const fn tuple() -> Self {
         Self {
@@ -241,6 +316,19 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing an unsigned integer of size `sz`.
+    ///
+    /// Returns `None` if `sz` does not correspond to a valid Solidity type.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::uint(32).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "uint32");
+    /// ```
     #[inline]
     pub const fn uint(sz: u16) -> Option<Self> {
         if sz == 0 || sz > 256 || sz % 8 != 0 {
@@ -253,6 +341,19 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a signed integer of size `sz`.
+    ///
+    /// Returns `None` if `sz` does not correspond to a valid Solidity type.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::int(32).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "int32");
+    /// ```
     #[inline]
     pub const fn int(sz: u16) -> Option<Self> {
         if sz == 0 || sz > 256 || sz % 8 != 0 {
@@ -265,6 +366,17 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a Solidity `address`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::address();
+    ///
+    /// assert_eq!(kind.to_string(), "address");
+    /// ```
     #[inline]
     pub const fn address() -> Self {
         Self {
@@ -273,6 +385,17 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a Solidity `bool`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::bool();
+    ///
+    /// assert_eq!(kind.to_string(), "bool");
+    /// ```
     #[inline]
     pub const fn bool() -> Self {
         Self {
@@ -281,6 +404,19 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a Solidity signed fixed point number.
+    ///
+    /// Returns `None` if `m` and `n` do not correspond to a Solidity type.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::fixed(8, 10).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "fixed8x10");
+    /// ```
     #[inline]
     pub const fn fixed(m: u16, n: u8) -> Option<Self> {
         if 8 <= m && m <= 256 && m % 8 == 0 && 0 < n && n <= 80 {
@@ -293,6 +429,19 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a Solidity unsigned fixed point number.
+    ///
+    /// Returns `None` if `m` and `n` do not correspond to a Solidity type.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::ufixed(8, 10).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "ufixed8x10");
+    /// ```
     #[inline]
     pub const fn ufixed(m: u16, n: u8) -> Option<Self> {
         if 8 <= m && m <= 256 && m % 8 == 0 && 0 < n && n <= 80 {
@@ -305,6 +454,19 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a fixed size bytes array (eg. `bytes32`.)
+    ///
+    /// Returns `None` if `sz` is zero or greater than 32.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::bytes_sized(32).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "bytes32");
+    /// ```
     #[inline]
     pub const fn bytes_sized(sz: u8) -> Option<Self> {
         if sz == 0 || sz > 32 {
@@ -317,6 +479,17 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a Solidity function pointer.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::function();
+    ///
+    /// assert_eq!(kind.to_string(), "function");
+    /// ```
     #[inline]
     pub const fn function() -> Self {
         Self {
@@ -325,6 +498,17 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a variable size bytes array (`bytes`.)
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::bytes();
+    ///
+    /// assert_eq!(kind.to_string(), "bytes");
+    /// ```
     #[inline]
     pub const fn bytes() -> Self {
         Self {
@@ -333,6 +517,17 @@ impl Kind {
         }
     }
 
+    /// Create a new [`Kind`] representing a Solidity string.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::Kind;
+    ///
+    /// let kind = Kind::string();
+    ///
+    /// assert_eq!(kind.to_string(), "string");
+    /// ```
     #[inline]
     pub const fn string() -> Self {
         Self {
@@ -444,6 +639,7 @@ impl TryFrom<&str> for Kind {
     }
 }
 
+/// Represents a user-defined Solidity type, like `struct Foo.Bar[][4]`.
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(try_from = "&str", into = "String")]
 pub struct InternalKind {
@@ -469,6 +665,18 @@ impl InternalKind {
             .unwrap_or(text)
     }
 
+    /// This [`InternalKind`], but without any arrays.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind: InternalKind = "struct Foo.Bar[4][][4]".parse().unwrap();
+    /// let base = kind.base_kind();
+    ///
+    /// assert_eq!(base.to_string(), "struct Foo.Bar");
+    /// ```
     #[inline]
     pub fn base_kind(&self) -> Self {
         Self {
@@ -477,61 +685,210 @@ impl InternalKind {
         }
     }
 
+    /// String representation of the base type.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind: InternalKind = "struct Foo.Bar[4][][4]".parse().unwrap();
+    /// let base = kind.base();
+    ///
+    /// assert_eq!(base, "struct Foo.Bar");
+    /// ```
     #[inline]
     pub fn base(&self) -> &str {
         &self.base
     }
 
+    /// Array component.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use core::num::NonZeroU32;
+    ///
+    /// use eip712::abi::InternalKind;
+    /// use eip712::abi::Array::*;
+    ///
+    /// let kind: InternalKind = "struct Foo.Bar[4][][4]".parse().unwrap();
+    /// let array = kind.array();
+    ///
+    /// let four = NonZeroU32::new(4).unwrap();
+    ///
+    /// assert_eq!(array, [Fixed(four), Variable, Fixed(four)]);
+    /// ```
     #[inline]
     pub fn array(&self) -> &[Array] {
         &self.array
     }
 
+    /// Create a new [`InternalKind`] representing an unsigned integer of size `sz`.
+    ///
+    /// Returns `None` if `sz` does not correspond to a valid Solidity type.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::uint(32).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "uint32");
+    /// ```
     #[inline]
     pub fn uint(sz: u16) -> Option<Self> {
         Kind::uint(sz).map(Into::into)
     }
 
+    /// Create a new [`InternalKind`] representing a signed integer of size `sz`.
+    ///
+    /// Returns `None` if `sz` does not correspond to a valid Solidity type.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::int(32).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "int32");
+    /// ```
     #[inline]
     pub fn int(sz: u16) -> Option<Self> {
         Kind::int(sz).map(Into::into)
     }
 
+    /// Create a new [`InternalKind`] representing a Solidity `address`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::address();
+    ///
+    /// assert_eq!(kind.to_string(), "address");
+    /// ```
     #[inline]
     pub fn address() -> Self {
         Kind::address().into()
     }
 
+    /// Create a new [`InternalKind`] representing a Solidity `bool`.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::bool();
+    ///
+    /// assert_eq!(kind.to_string(), "bool");
+    /// ```
     #[inline]
     pub fn bool() -> Self {
         Kind::bool().into()
     }
 
+    /// Create a new [`InternalKind`] representing a Solidity signed fixed point number.
+    ///
+    /// Returns `None` if `m` and `n` do not correspond to a Solidity type.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::fixed(8, 10).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "fixed8x10");
+    /// ```
     #[inline]
     pub fn fixed(m: u16, n: u8) -> Option<Self> {
         Kind::fixed(m, n).map(Into::into)
     }
 
+    /// Create a new [`InternalKind`] representing a Solidity unsigned fixed point number.
+    ///
+    /// Returns `None` if `m` and `n` do not correspond to a Solidity type.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::ufixed(8, 10).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "ufixed8x10");
+    /// ```
     #[inline]
     pub fn ufixed(m: u16, n: u8) -> Option<Self> {
         Kind::ufixed(m, n).map(Into::into)
     }
 
+    /// Create a new [`InternalKind`] representing a fixed size bytes array (eg. `bytes32`.)
+    ///
+    /// Returns `None` if `sz` is zero or greater than 32.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::bytes_sized(32).unwrap();
+    ///
+    /// assert_eq!(kind.to_string(), "bytes32");
+    /// ```
     #[inline]
     pub fn bytes_sized(sz: u8) -> Option<Self> {
         Kind::bytes_sized(sz).map(Into::into)
     }
 
+    /// Create a new [`InternalKind`] representing a Solidity function pointer.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::function();
+    ///
+    /// assert_eq!(kind.to_string(), "function");
+    /// ```
     #[inline]
     pub fn function() -> Self {
         Kind::function().into()
     }
 
+    /// Create a new [`InternalKind`] representing a variable size bytes array (`bytes`.)
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::bytes();
+    ///
+    /// assert_eq!(kind.to_string(), "bytes");
+    /// ```
     #[inline]
     pub fn bytes() -> Self {
         Kind::bytes().into()
     }
 
+    /// Create a new [`InternalKind`] representing a Solidity string.
+    ///
+    /// ## Example
+    ///
+    /// ```
+    /// use eip712::abi::InternalKind;
+    ///
+    /// let kind = InternalKind::string();
+    ///
+    /// assert_eq!(kind.to_string(), "string");
+    /// ```
     #[inline]
     pub fn string() -> Self {
         Kind::string().into()
@@ -587,6 +944,7 @@ impl From<InternalKind> for String {
     }
 }
 
+/// Description of an input or output parameter.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Parameter {
@@ -617,26 +975,40 @@ impl Parameter {
         }
     }
 
+    /// Internal type of this parameter.
+    ///
+    /// This is where information about structs and other complex data types can
+    /// be found.
     #[inline]
     pub fn internal_kind(&self) -> &InternalKind {
         &self.internal_kind
     }
 
+    /// Name of this parameter.
+    ///
+    /// In functions, this is the name of the parameter itself. In structs, this
+    /// is the field name.
     #[inline]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Actual ABI type of this parameter.
+    ///
+    /// For structs, this will be `tuple`.
     #[inline]
     pub fn kind(&self) -> &Kind {
         &self.kind
     }
 
+    /// For complex data types, the parameters that describe the structure of this
+    /// parameter.
     #[inline]
     pub fn components(&self) -> &[Self] {
         &self.components
     }
 
+    /// Compare this parameter with `other`, ignoring the names of fields.
     #[inline]
     pub fn eq_(&self, other: &Self) -> bool {
         if self.internal_kind != other.internal_kind {
@@ -657,6 +1029,7 @@ impl Parameter {
     }
 }
 
+/// Description of a function exposed in the ABI.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Function {
@@ -667,21 +1040,25 @@ pub struct Function {
 }
 
 impl Function {
+    /// Parameters this function accepts as arguments.
     #[inline]
     pub fn inputs(&self) -> &[Parameter] {
         self.inputs.as_slice()
     }
 
+    /// Parameters this function returns.
     #[inline]
     pub fn outputs(&self) -> &[Parameter] {
         self.outputs.as_slice()
     }
 
+    /// Name of this function.
     #[inline]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Description of how this function may modify state.
     #[inline]
     pub fn state_mutability(&self) -> StateMutability {
         self.state_mutability
@@ -703,6 +1080,7 @@ impl Function {
     }
 }
 
+/// Description of an argument to an event.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct EventParameter {
@@ -713,27 +1091,36 @@ pub struct EventParameter {
 }
 
 impl EventParameter {
+    /// Whether this event parameter is included as part of the topic.
     pub fn indexed(&self) -> bool {
         self.indexed
     }
 
+    /// Internal type of this event parameter.
+    ///
+    /// Includes information about structs and other complex types.
     pub fn internal_kind(&self) -> &InternalKind {
         &self.parameter.internal_kind
     }
 
+    /// Name of this event parameter.
     pub fn name(&self) -> &str {
         &self.parameter.name
     }
 
+    /// Actual type of this event parameter.
     pub fn kind(&self) -> &Kind {
         &self.parameter.kind
     }
 
+    /// For complex data types, the parameters that describe the structure of this
+    /// event parameter.
     pub fn components(&self) -> &[Parameter] {
         &self.parameter.components
     }
 }
 
+/// Description of an event specified by an ABI.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct Event {
@@ -743,30 +1130,38 @@ pub struct Event {
 }
 
 impl Event {
+    /// False if this event has a name, true otherwise.
     #[inline]
     pub fn anonymous(&self) -> bool {
         self.anonymous
     }
 
+    /// Parameters captured by this event.
     #[inline]
     pub fn inputs(&self) -> &[EventParameter] {
         self.inputs.as_slice()
     }
 
+    /// Name of this event.
     #[inline]
     pub fn name(&self) -> &str {
         &self.name
     }
 }
 
+/// An ABI item.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum Entry {
+    /// Function described by the ABI.
     Function(Function),
+
+    /// Event described by the ABI.
     Event(Event),
 }
 
 impl Entry {
+    /// If this entry is an event, return it. Otherwise return `None`.
     pub fn as_event(&self) -> Option<&Event> {
         match self {
             Self::Event(e) => Some(e),
@@ -774,6 +1169,7 @@ impl Entry {
         }
     }
 
+    /// If this entry is an event, return it. Otherwise panic.
     pub fn unwrap_event(self) -> Event {
         match self {
             Self::Event(e) => e,
@@ -781,6 +1177,7 @@ impl Entry {
         }
     }
 
+    /// If this entry is function, return it. Otherwise return `None`.
     pub fn as_function(&self) -> Option<&Function> {
         match self {
             Self::Function(f) => Some(f),
@@ -788,6 +1185,7 @@ impl Entry {
         }
     }
 
+    /// If this entry is function, return it. Otherwise panic.
     pub fn unwrap_function(self) -> Function {
         match self {
             Self::Function(f) => f,
@@ -796,6 +1194,7 @@ impl Entry {
     }
 }
 
+/// Parse an ABI description from text.
 pub fn from_str(text: &str) -> Result<Vec<Entry>, Error> {
     let result = serde_json::from_str(text)
         .map_err(JsonError::from)
@@ -803,6 +1202,7 @@ pub fn from_str(text: &str) -> Result<Vec<Entry>, Error> {
     Ok(result)
 }
 
+/// Parse an ABI description from a reader.
 #[cfg(feature = "std")]
 pub fn from_reader<R>(reader: R) -> Result<Vec<Entry>, Error>
 where
@@ -814,6 +1214,7 @@ where
     Ok(result)
 }
 
+/// Parse an ABI description from a byte slice.
 pub fn from_slice(bytes: &[u8]) -> Result<Vec<Entry>, Error> {
     let result = serde_json::from_slice(bytes)
         .map_err(JsonError::from)
@@ -825,7 +1226,7 @@ pub fn from_slice(bytes: &[u8]) -> Result<Vec<Entry>, Error> {
 mod tests {
     use super::*;
 
-    #[test]
+    #[crate::test]
     fn parse_uint32() {
         let input = "uint32";
         let actual: Kind = input.parse().unwrap();
@@ -837,14 +1238,13 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_uint() {
         let input = "uint";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_int32() {
         let input = "int32";
         let actual: Kind = input.parse().unwrap();
@@ -856,14 +1256,13 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_int() {
         let input = "int";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_address() {
         let input = "address";
         let actual: Kind = input.parse().unwrap();
@@ -875,27 +1274,25 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_addr() {
         let input = "addr";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_bool() {
         let input = "bool";
         input.parse::<Kind>().unwrap();
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_bool1() {
         let input = "bool1";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_fixed8x1() {
         let input = "fixed8x1";
         let actual: Kind = input.parse().unwrap();
@@ -907,14 +1304,13 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_fixed8x1x1() {
         let input = "fixed8x1x1";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_ufixed8x1() {
         let input = "ufixed8x1";
         let actual: Kind = input.parse().unwrap();
@@ -926,14 +1322,13 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_ufixed8x1x1() {
         let input = "ufixed8x1x1";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_bytes12() {
         let input = "bytes12";
         let actual: Kind = input.parse().unwrap();
@@ -945,14 +1340,13 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_bytes12x1() {
         let input = "bytes12x1";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_function() {
         let input = "function";
         let actual: Kind = input.parse().unwrap();
@@ -964,14 +1358,13 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_functionx1() {
         let input = "functionx1";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_string() {
         let input = "string";
         let actual: Kind = input.parse().unwrap();
@@ -983,14 +1376,13 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_stringx1() {
         let input = "stringx1";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_uint32_array() {
         let input = "uint32[]";
         let actual: Kind = input.parse().unwrap();
@@ -1002,14 +1394,13 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    #[test]
-    #[should_panic]
+    #[crate::test]
     fn parse_uint32_array_unclosed() {
         let input = "uint32[";
-        input.parse::<Kind>().unwrap();
+        input.parse::<Kind>().unwrap_err();
     }
 
-    #[test]
+    #[crate::test]
     fn parse_uint32_array_sized() {
         let input = "uint32[3422]";
         let actual: Kind = input.parse().unwrap();

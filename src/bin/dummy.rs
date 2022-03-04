@@ -22,11 +22,11 @@ impl eip712::Reporter for ConsoleReporter {
 }
 
 fn main() {
-    let abi = include_str!("../../tests/abi/eip712demo.json");
+    let abi = include_str!("../../tests/abi/arraystruct.json");
     let mut output = String::new();
 
-    Eip712::<ConsoleReporter>::new("EIP712Demo")
-        .signing_domain("Ether Mail")
+    Eip712::<ConsoleReporter>::new("ArrayInStruct")
+        .signing_domain("ArrayInStruct")
         .version("1")
         .read_str(abi)
         .unwrap()

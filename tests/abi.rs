@@ -6,6 +6,9 @@
 
 use eip712::abi::{self, Kind, StateMutability};
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_test::wasm_bindgen_test as test;
+
 #[test]
 fn ownable() {
     let ownable = abi::from_slice(include_bytes!("abi/ownable.json")).unwrap();

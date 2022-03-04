@@ -82,7 +82,7 @@ mod tests {
 
     use super::*;
 
-    #[test]
+    #[crate::test]
     fn encode_type_bare() {
         let input = r#"{
             "inputs": [
@@ -115,7 +115,7 @@ mod tests {
         assert_eq!("NonpayableBare()", actual);
     }
 
-    #[test]
+    #[crate::test]
     fn encode_type_one_arg() {
         let input = r#"{
             "inputs": [
@@ -153,7 +153,7 @@ mod tests {
         assert_eq!("ViewOneArg(uint256 hello)", actual);
     }
 
-    #[test]
+    #[crate::test]
     fn encode_type_complex() {
         let input = r#"{
             "inputs": [
