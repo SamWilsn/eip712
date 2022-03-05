@@ -592,9 +592,9 @@ where
     /// let mut output = String::new();
     ///
     /// // Configure and run the generator.
-    /// Eip712::<ConsoleReporter>::new("EIP712Demo")    // Name of the base contract.
-    ///     .signing_domain("EIP712Demo")               // Name for the EIP-712 domain.
-    ///     .version("1")                               // Contract version.
+    /// Eip712::<()>::new("EIP712Demo")     // Name of the base contract.
+    ///     .signing_domain("EIP712Demo")   // Name for the EIP-712 domain.
+    ///     .version("1")                   // Contract version.
     ///     .read_file(path)
     ///     .unwrap()
     ///     .generate(&mut output)
