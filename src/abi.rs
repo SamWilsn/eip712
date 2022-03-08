@@ -16,6 +16,7 @@ use crate::IteratorExt;
 
 use heck::ToUpperCamelCase;
 
+use serde::de::{Deserializer, Error as _};
 use serde::{Deserialize, Serialize};
 
 use smallvec::SmallVec;
@@ -102,8 +103,8 @@ pub struct StateMutabilityFromStrError {}
 /// See: [State Mutability].
 ///
 /// [State Mutability]: https://docs.soliditylang.org/en/v0.8.12/contracts.html#state-mutability
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
-#[serde(try_from = "&str", into = "String")]
+#[derive(Debug, Serialize, Clone, Copy, Eq, PartialEq)]
+#[serde(into = "String")]
 pub enum StateMutability {
     /// Function does not read from or modify the state.
     ///
@@ -124,6 +125,17 @@ pub enum StateMutability {
 
     /// Function may read and modify the state, and may receive funds.
     Payable,
+}
+
+impl<'de> Deserialize<'de> for StateMutability {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let txt = String::deserialize(deserializer)?;
+        let obj = Self::from_str(&txt).map_err(D::Error::custom)?;
+        Ok(obj)
+    }
 }
 
 impl From<StateMutability> for String {
@@ -252,11 +264,22 @@ pub enum Array {
 }
 
 /// Represents a Solidity type, like `uint256[98][][3]`.
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq, Hash)]
-#[serde(try_from = "&str", into = "String")]
+#[derive(Debug, Serialize, Clone, Eq, PartialEq, Hash)]
+#[serde(into = "String")]
 pub struct Kind {
     base: Base,
     array: SmallVec<[Array; 2]>,
+}
+
+impl<'de> Deserialize<'de> for Kind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let txt = String::deserialize(deserializer)?;
+        let obj = Self::from_str(&txt).map_err(D::Error::custom)?;
+        Ok(obj)
+    }
 }
 
 impl Kind {
@@ -637,11 +660,22 @@ impl TryFrom<&str> for Kind {
 }
 
 /// Represents a user-defined Solidity type, like `struct Foo.Bar[][4]`.
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
-#[serde(try_from = "&str", into = "String")]
+#[derive(Debug, Serialize, Clone, Eq, PartialEq)]
+#[serde(into = "String")]
 pub struct InternalKind {
     base: String,
     array: SmallVec<[Array; 2]>,
+}
+
+impl<'de> Deserialize<'de> for InternalKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let txt = String::deserialize(deserializer)?;
+        let obj = Self::from_str(&txt).map_err(D::Error::custom)?;
+        Ok(obj)
+    }
 }
 
 impl InternalKind {

@@ -113,7 +113,7 @@ pub enum Warning {
     #[snafu(display("function `{function}` does not have a `nonce` parameter"))]
     MissingNonce {
         /// Name of the function lacking replay protection.
-        function: String
+        function: String,
     },
 }
 
@@ -592,9 +592,9 @@ where
     /// let mut output = String::new();
     ///
     /// // Configure and run the generator.
-    /// Eip712::<ConsoleReporter>::new("EIP712Demo")    // Name of the base contract.
-    ///     .signing_domain("EIP712Demo")               // Name for the EIP-712 domain.
-    ///     .version("1")                               // Contract version.
+    /// Eip712::<()>::new("EIP712Demo")     // Name of the base contract.
+    ///     .signing_domain("EIP712Demo")   // Name for the EIP-712 domain.
+    ///     .version("1")                   // Contract version.
     ///     .read_file(path)
     ///     .unwrap()
     ///     .generate(&mut output)
@@ -615,7 +615,7 @@ where
             self.source = Some(path.display().to_string());
         }
 
-        let file = self.require(File::open(path).context(FileSystemSnafu { path: path }))?;
+        let file = self.require(File::open(path).context(FileSystemSnafu { path }))?;
 
         let reader = std::io::BufReader::new(file);
 
@@ -875,10 +875,7 @@ where
 
             writeln!(w, "    {{")?;
 
-            let nonce = parameter
-                .components()
-                .iter()
-                .find(|p| p.name() == "nonce");
+            let nonce = parameter.components().iter().find(|p| p.name() == "nonce");
 
             if let Some(_nonce) = nonce {
                 todo!("implement nonces");
