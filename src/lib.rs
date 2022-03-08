@@ -113,7 +113,7 @@ pub enum Warning {
     #[snafu(display("function `{function}` does not have a `nonce` parameter"))]
     MissingNonce {
         /// Name of the function lacking replay protection.
-        function: String
+        function: String,
     },
 }
 
@@ -875,10 +875,7 @@ where
 
             writeln!(w, "    {{")?;
 
-            let nonce = parameter
-                .components()
-                .iter()
-                .find(|p| p.name() == "nonce");
+            let nonce = parameter.components().iter().find(|p| p.name() == "nonce");
 
             if let Some(_nonce) = nonce {
                 todo!("implement nonces");
