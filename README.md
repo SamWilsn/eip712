@@ -41,6 +41,25 @@ abstract contract NameRegistry {
 }
 ```
 
+### On the Command Line
+
+Install `eip712-cli`:
+
+```bash
+$ cargo install eip712-cli
+```
+
+Then run it with:
+
+```bash
+$ eip712 \
+    --base NameRegistry \
+    --signing-domain NameRegistry \
+    --version 1 \
+    --output /tmp/output.sol \
+    NameRegistry.json
+```
+
 ### As a Library
 
 For advanced uses, this crate can be used as a library from Rust or JavaScript.

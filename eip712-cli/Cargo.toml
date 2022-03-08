@@ -10,7 +10,11 @@ description = "tool to generate EIP-712 compatible Solidity"
 backtraces = [ "snafu/backtraces", "eip712/backtraces" ]
 
 [dependencies]
-clap = { version = "3.1.6", features = [ "derive" ] }
+clap = { version = "3.1.6", features = [ "derive", "cargo" ] }
 eip712 = { path = "..", features = [ "std" ] }
 snafu = "0.7.0"
 hex = "0.4.3"
+
+[[bin]]
+name = "eip712"
+path = "src/main.rs"

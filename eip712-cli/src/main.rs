@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use clap::{ArgEnum, Parser};
+use clap::Parser;
 
 use eip712::{Eip712, Error, Locate, Warning};
 
@@ -40,33 +40,52 @@ impl FromStr for Salt {
     }
 }
 
-#[derive(Debug, Clone, ArgEnum)]
-enum VerifyingContract {
-    This,
-}
-
+/// Generate Solidity for verifying EIP-712 style signatures.
 #[derive(Debug, Parser)]
 struct Args {
+    /// Path to the ABI description as JSON.
     source: PathBuf,
 
-    #[clap(short, long)]
+    /// Name of the contract to inherit from.
+    #[clap(short, long, display_order(1))]
     base: String,
 
-    #[clap(short, long)]
+    /// Optional version to use in domain separator.
+    #[clap(short, long, help_heading("DOMAIN SEPARATOR"))]
     version: Option<String>,
 
-    #[clap(short('n'), long)]
+    /// Do not use a name in the domain separator.
+    #[clap(
+        long,
+        conflicts_with("signing-domain"),
+        display_order(2),
+        help_heading("DOMAIN SEPARATOR")
+    )]
+    no_signing_domain: bool,
+
+    /// Optional name to use in domain separator.
+    #[clap(
+        short('n'),
+        value_name("NAME"),
+        long,
+        display_order(2),
+        help_heading("DOMAIN SEPARATOR")
+    )]
     signing_domain: Option<String>,
 
-    #[clap(long)]
+    /// Do not include verifying contract in domain separator.
+    #[clap(long, help_heading("DOMAIN SEPARATOR"))]
     no_verifying_contract: bool,
 
-    #[clap(long)]
+    /// Do not include chain ID in domain separator.
+    #[clap(long, help_heading("DOMAIN SEPARATOR"))]
     no_chain_id: bool,
 
-    #[clap(long)]
+    /// Optional salt to use in domain separator.
+    #[clap(short, long, help_heading("DOMAIN SEPARATOR"))]
     salt: Option<Salt>,
 
+    /// Path to write the output Solidity to.
     #[clap(short, long)]
     output: Option<PathBuf>,
 }
@@ -115,6 +134,10 @@ fn run() -> Option<()> {
 
     if let Some(version) = args.version {
         gen = gen.version(version);
+    }
+
+    if args.no_signing_domain {
+        gen = gen.clear_signing_domain();
     }
 
     if let Some(signing_domain) = args.signing_domain {
