@@ -64,6 +64,7 @@ impl crate::Reporter for Reporter {
     }
 }
 
+#[derive(Debug)]
 #[wasm_bindgen]
 pub struct Eip712(crate::Eip712<Reporter>);
 
