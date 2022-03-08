@@ -1,9 +1,16 @@
-on: [push, pull_request]
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
 
 name: Continuous integration
 
 jobs:
-  check:
+  test:
     name: Test
     runs-on: ubuntu-latest
     strategy:
@@ -33,4 +40,18 @@ jobs:
         run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
         if: ${{ contains(matrix.tool, 'wasm-pack') }}
 
-      - run: ${{ matrix.tool }} ${{ matrix.features }}
+      - run: ${{ matrix.tool }} --locked ${{ matrix.features }}
+
+  lint:
+    name: 'Format & Lints'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: 1.58.1
+          components: rustfmt, clippy
+          override: true
+      - run: cargo fmt --check
+      - run: cargo clippy --all-features

@@ -615,7 +615,7 @@ where
             self.source = Some(path.display().to_string());
         }
 
-        let file = self.require(File::open(path).context(FileSystemSnafu { path: path }))?;
+        let file = self.require(File::open(path).context(FileSystemSnafu { path }))?;
 
         let reader = std::io::BufReader::new(file);
 
