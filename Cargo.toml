@@ -1,3 +1,6 @@
+[workspace]
+members = [ "eip712-cli" ]
+
 [package]
 name = "eip712"
 version = "0.1.0"
@@ -34,7 +37,3 @@ panic = "abort"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-
-[[bin]]
-name = "dummy"
-required-features = [ "std" ]

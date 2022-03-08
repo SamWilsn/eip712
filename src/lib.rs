@@ -43,7 +43,7 @@
 
 #![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![deny(unsafe_code)]
-#![warn(missing_docs, unused_qualifications)]
+#![warn(missing_docs, unused_qualifications, missing_debug_implementations)]
 
 extern crate alloc;
 
@@ -91,6 +91,9 @@ pub enum Error {
 
         /// Location of the file or directory.
         path: std::path::PathBuf,
+
+        /// Location where the error was generated.
+        backtrace: Backtrace,
     },
 
     /// Multiple types with the same name have different internal structures.
@@ -119,6 +122,7 @@ pub enum Warning {
 
 /// Wrapper for [`Error`] and [`Warning`] that provides the source location.
 #[derive(Debug, Snafu)]
+#[snafu(display("{source}: {inner}"))]
 pub struct Locate<E>
 where
     E: 'static + snafu::ErrorCompat + snafu::AsErrorSource + core::fmt::Display,

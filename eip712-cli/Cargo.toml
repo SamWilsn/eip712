@@ -1,0 +1,16 @@
+[package]
+name = "eip712-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+repository = "https://github.com/SamWilsn/eip712"
+description = "tool to generate EIP-712 compatible Solidity"
+
+[features]
+backtraces = [ "snafu/backtraces", "eip712/backtraces" ]
+
+[dependencies]
+clap = { version = "3.1.6", features = [ "derive" ] }
+eip712 = { path = "..", features = [ "std" ] }
+snafu = "0.7.0"
+hex = "0.4.3"
