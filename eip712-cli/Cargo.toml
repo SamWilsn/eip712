@@ -11,7 +11,7 @@ backtraces = [ "snafu/backtraces", "eip712/backtraces" ]
 
 [dependencies]
 clap = { version = "3.1.6", features = [ "derive", "cargo" ] }
-eip712 = { path = "..", features = [ "std" ] }
+eip712 = { path = "..", version = "0.1.0", features = [ "std" ] }
 snafu = "0.7.0"
 hex = "0.4.3"
 
