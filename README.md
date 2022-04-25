@@ -60,6 +60,8 @@ $ eip712 \
     NameRegistry.json
 ```
 
+where `NameRegistry.json` is a file that contains the NameRegistry contract's ABI.
+
 ### As a Library
 
 For advanced uses, this crate can be used as a library from Rust or JavaScript.
